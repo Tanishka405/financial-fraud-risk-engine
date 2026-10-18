@@ -7,3 +7,7 @@ build/
 config/config.yaml
 data_files/*.csv
 .DS_Store
+var/
+web/node_modules/
+web/dist/
+*.sqlite3

@@ -38,15 +38,22 @@ def load_transactions_csv(path: str | Path, config: Config) -> ValidationOutcome
         raise FileNotFoundError(f"CSV file not found: {path}")
 
     df = pd.read_csv(path, dtype=str, keep_default_na=True)
+    return validate_raw_dataframe(df, config, source=str(path))
 
+
+def validate_raw_dataframe(df: pd.DataFrame, config: Config, source: str = "<dataframe>") -> ValidationOutcome:
+    """Validate an already-parsed raw (all-string) DataFrame through exactly the same
+    path as `load_transactions_csv`. Lets callers (e.g. an upload endpoint) parse
+    from memory without touching the filesystem. Only the canonical columns are
+    passed to the validator; any extra columns are ignored by construction."""
     missing_columns = set(REQUIRED_COLUMNS) - set(df.columns)
     if missing_columns:
         raise SchemaError(
-            f"CSV {path} is missing required column(s): {sorted(missing_columns)}. "
+            f"CSV {source} is missing required column(s): {sorted(missing_columns)}. "
             f"Required columns are: {REQUIRED_COLUMNS}"
         )
 
-    rows = df.to_dict(orient="records")
+    rows = df[list(REQUIRED_COLUMNS)].to_dict(orient="records")
     return validate_batch(rows, config)
 
 

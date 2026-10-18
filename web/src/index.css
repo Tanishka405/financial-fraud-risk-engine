@@ -1,0 +1,66 @@
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+@import "tailwindcss";
+@import "@xyflow/react/dist/base.css";
+
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-ink: #070b14;
+  --color-s1: #0b1120;
+  --color-s2: #0f172a;
+  --color-s3: #141e33;
+  --color-s4: #1b2742;
+  --color-line: #1c2740;
+  --color-line-strong: #2a3a5c;
+
+  --color-fg: #e7ecf5;
+  --color-fg-2: #a3b0c6;
+  --color-fg-3: #6b7a95;
+
+  --color-emerald: #34d399;
+  --color-cyan: #22d3ee;
+  --color-amber: #fbbf24;
+  --color-red: #f87171;
+  --color-crit: #ef4444;
+  --color-slate-node: #64748b;
+
+  --text-2xs: 0.6875rem;
+  --radius-card: 10px;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-fade-in: fade-in 220ms ease-out both;
+  --animate-slide-in: slide-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+
+  @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  @keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  @keyframes slide-in { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0; background: var(--color-ink); color: var(--color-fg);
+  font-family: var(--font-sans); font-size: 13.5px; line-height: 1.45;
+  -webkit-font-smoothing: antialiased; font-feature-settings: "cv11", "ss01", "tnum";
+}
+.num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum", "zero"; }
+::selection { background: rgba(34, 211, 238, 0.25); }
+:focus-visible { outline: 2px solid var(--color-cyan); outline-offset: 2px; border-radius: 6px; }
+* { scrollbar-width: thin; scrollbar-color: #26344f transparent; }
+
+.surface { background: linear-gradient(180deg, rgba(20,30,51,.55), rgba(11,17,32,.85)); border: 1px solid var(--color-line); border-radius: var(--radius-card); }
+.label { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--color-fg-3); font-weight: 600; }
+.skeleton { background: linear-gradient(90deg, #121b30 25%, #1a2641 37%, #121b30 63%); background-size: 200% 100%; animation: var(--animate-shimmer); border-radius: 6px; }
+
+/* React Flow */
+.react-flow { --xy-background-color: transparent; background: transparent; }
+.react-flow__attribution { background: transparent; font-size: 9px; opacity: .5; }
+.react-flow__controls { box-shadow: none; border: 1px solid var(--color-line-strong); border-radius: 8px; overflow: hidden; }
+.react-flow__controls-button { background: var(--color-s3); border: 0; border-bottom: 1px solid var(--color-line); fill: var(--color-fg-2); width: 28px; height: 28px; }
+.react-flow__controls-button:hover { background: var(--color-s4); fill: var(--color-fg); }
+.react-flow__minimap { background: var(--color-s2); border: 1px solid var(--color-line-strong); border-radius: 8px; }
+.react-flow__node { cursor: pointer; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
