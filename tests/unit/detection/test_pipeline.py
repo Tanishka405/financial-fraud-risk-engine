@@ -87,3 +87,23 @@ def test_repeated_transactions_preserved_in_graph_of_result(config):
     tx = make_tx([(f"T{i}", "A", "B", 100, i) for i in range(4)])
     r = run_analysis(tx, config)
     assert r.graph.number_of_edges() == 4 and len(r.graph["A"]["B"]) == 4
+
+
+def test_structuring_alert_end_to_end_with_real_evidence(config):
+    """Label usage is test-side only: used to confirm evidence points at the injected transactions."""
+    ds = generate_synthetic_dataset(config, include_structuring=True)
+    tx = transactions_to_dataframe(ds.transactions)
+    r = run_analysis(tx, config)
+    acc = ds.account_scenarios.query("scenario == 'STRUCTURING_SOURCE'")["account_id"].iloc[0]
+    alert = next(a for a in r.alerts if a.account_id == acc)
+    assert "STRUCTURING" in alert.reason_codes
+    hit = next(h for h in alert.hits if h.rule_code == "STRUCTURING")
+    injected = set(ds.transaction_scenarios.query("scenario == 'STRUCTURING'")["transaction_id"])
+    assert set(hit.transaction_ids) == injected
+    assert "scenario" not in tx.columns
+
+
+def test_structuring_does_not_fire_on_default_synthetic_traffic(config):
+    ds = generate_synthetic_dataset(config)
+    r = run_analysis(transactions_to_dataframe(ds.transactions), config)
+    assert not [h for h in r.rule_hits if h.rule_code == "STRUCTURING"]

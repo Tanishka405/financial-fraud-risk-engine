@@ -66,6 +66,7 @@ class RunRequest(BaseModel):
     seed: Optional[int] = Field(None, ge=0, le=2**31 - 1)
     num_accounts: Optional[int] = Field(None, ge=20, le=2000)
     num_normal_transactions: Optional[int] = Field(None, ge=0, le=50_000)
+    include_structuring: bool = Field(False, description="Append the opt-in STRUCTURING test scenario (needs >= 30 accounts).")
 
 
 class TransactionOut(BaseModel):

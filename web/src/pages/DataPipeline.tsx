@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, PageHeader } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Toggle } from "@/components/ui/Field";
 import { Pagination } from "@/components/ui/Pagination";
 import { Callout } from "@/components/ui/States";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -23,18 +23,19 @@ export default function DataPipeline() {
   const ev = useEvaluation(loaded && !!d?.is_synthetic);
   const [rp, setRp] = useState(1); const rejects = useRejects(rp);
   const [seed, setSeed] = useState("42"); const [accounts, setAccounts] = useState("200"); const [normal, setNormal] = useState("3000");
+  const [structuring, setStructuring] = useState(false);
   const [confirm, setConfirm] = useState<null | "run">(null);
   const [file, setFile] = useState<File | null>(null); const [fileErr, setFileErr] = useState<string | null>(null); const [drag, setDrag] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const running = st.data?.status === "running";
 
   const numErr = (v: string, lo: number, hi: number) => (v === "" || !Number.isInteger(Number(v)) || Number(v) < lo || Number(v) > hi ? `Integer ${lo}–${hi}` : null);
-  const errs = { seed: numErr(seed, 0, 2147483647), accounts: numErr(accounts, 20, 2000), normal: numErr(normal, 0, 50000) };
+  const errs = { seed: numErr(seed, 0, 2147483647), accounts: numErr(accounts, structuring ? 30 : 20, 2000), normal: numErr(normal, 0, 50000) };
   const bad = Object.values(errs).some(Boolean);
 
   const doRun = () => {
     setConfirm(null);
-    run.mutate({ seed: Number(seed), num_accounts: Number(accounts), num_normal_transactions: Number(normal) }, { onSuccess: () => toast("success", "Synthetic analysis started."), onError: (e) => toast("error", e.message) });
+    run.mutate({ seed: Number(seed), num_accounts: Number(accounts), num_normal_transactions: Number(normal), include_structuring: structuring }, { onSuccess: () => toast("success", "Synthetic analysis started."), onError: (e) => toast("error", e.message) });
   };
   const pick = (f: File | undefined) => {
     setFileErr(null); setFile(null);
@@ -69,6 +70,7 @@ export default function DataPipeline() {
               <Field label="Accounts" hint={errs.accounts ?? undefined}><Input inputMode="numeric" aria-label="Number of accounts" aria-invalid={!!errs.accounts} value={accounts} onChange={(e) => setAccounts(e.target.value)} /></Field>
               <Field label="Normal txns" hint={errs.normal ?? undefined}><Input inputMode="numeric" aria-label="Number of normal transactions" aria-invalid={!!errs.normal} value={normal} onChange={(e) => setNormal(e.target.value)} /></Field>
             </div>
+            <Toggle checked={structuring} onChange={setStructuring} label="Include opt-in STRUCTURING scenario (adds 6 cash deposits just below INR 50,000)" />
             <Button variant="primary" disabled={bad || running} loading={run.isPending} onClick={() => (loaded ? setConfirm("run") : doRun())}><Sparkles className="size-4" />Generate &amp; analyse</Button>
           </div></Card>
 

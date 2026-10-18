@@ -38,7 +38,9 @@ def analysis_status():
 @router.post("/analysis/run", response_model=AnalysisStatus, status_code=202, tags=["analysis"])
 def analysis_run(req: RunRequest | None = None):
     req = req or RunRequest()
-    SESSION.start_synthetic(req.seed, req.num_accounts, req.num_normal_transactions)
+    if req.include_structuring and req.num_accounts is not None and req.num_accounts < 30:
+        raise ApiError(422, "INVALID_PARAMETER", "include_structuring requires at least 30 accounts.", {"field": "num_accounts"})
+    SESSION.start_synthetic(req.seed, req.num_accounts, req.num_normal_transactions, include_structuring=req.include_structuring)
     return analysis_status()
 
 

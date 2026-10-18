@@ -101,3 +101,51 @@ def test_thresholds_are_configurable():
 def test_flow_search_respects_expansion_cap():
     rows = [(f"T{i}", f"N{i%6}", f"N{(i+1)%6}", 1000, i) for i in range(60)]
     run_rules(make_tx(rows), DetectionConfig(max_flow_expansions=50, max_flow_results=5))  # must terminate
+
+
+# ------------------------------------------------------------------ STRUCTURING
+def _struct(n=4, amount=45_000, gap=10, sender="S", start=0):
+    return [(f"X{start}_{i}", sender, f"R{i}", amount, start + i * gap) for i in range(n)]
+
+
+def test_structuring_fires_with_evidence_and_metrics():
+    h = [x for x in run_rules(make_tx(_struct(5)), CFG) if x.rule_code == "STRUCTURING"]
+    assert len(h) == 1 and h[0].account_id == "S" and h[0].role == "sender"
+    assert h[0].metrics["txns_in_window"] == 5 and h[0].metrics["aggregate_inr"] == 225_000
+    assert h[0].metrics["threshold_inr"] == 50_000 and h[0].metrics["band_floor_inr"] == 40_000
+    assert len(h[0].transaction_ids) == 5 and "just below" in h[0].summary
+
+
+def test_structuring_not_triggered_by_ordinary_small_payments():
+    """The prototype's rule (count of any sub-threshold txns) would fire here; a band-limited rule must not."""
+    small = [(f"S{i}", "A", f"R{i}", 300, i * 5) for i in range(8)]
+    assert "STRUCTURING" not in codes(run_rules(make_tx(small), CFG))
+
+
+def test_structuring_band_boundaries_floor_included_threshold_excluded():
+    at_floor = [(f"F{i}", "A", f"R{i}", 40_000, i) for i in range(4)]
+    assert "STRUCTURING" in codes(run_rules(make_tx(at_floor), CFG))
+    just_under_floor = [(f"G{i}", "A", f"R{i}", 39_999.99, i) for i in range(4)]
+    assert "STRUCTURING" not in codes(run_rules(make_tx(just_under_floor), CFG))
+    at_threshold = [(f"T{i}", "A", f"R{i}", 50_000, i) for i in range(4)]
+    assert "STRUCTURING" not in codes(run_rules(make_tx(at_threshold), CFG))  # at/above threshold is not 'below'
+    above = [(f"U{i}", "A", f"R{i}", 60_000, i) for i in range(4)]
+    assert "STRUCTURING" not in codes(run_rules(make_tx(above), CFG))
+
+
+def test_structuring_requires_min_count_and_window():
+    assert "STRUCTURING" not in codes(run_rules(make_tx(_struct(3)), CFG))  # below min txns
+    assert "STRUCTURING" not in codes(run_rules(make_tx(_struct(4, gap=60)), CFG))  # 4 txns over 180 min > 120 min window
+    assert "STRUCTURING" in codes(run_rules(make_tx(_struct(4, gap=40)), CFG))  # 120 min span fits the window
+
+
+def test_structuring_is_per_sender_not_pooled_across_accounts():
+    rows = _struct(2, sender="A") + _struct(2, sender="B", start=1)
+    assert "STRUCTURING" not in codes(run_rules(make_tx(rows), CFG))
+
+
+def test_structuring_threshold_is_configurable():
+    rows = [(f"C{i}", "A", f"R{i}", 9_000, i) for i in range(4)]
+    assert "STRUCTURING" not in codes(run_rules(make_tx(rows), CFG))
+    cfg = DetectionConfig(structuring_threshold_inr=10_000.0)
+    assert "STRUCTURING" in codes(run_rules(make_tx(rows), cfg))

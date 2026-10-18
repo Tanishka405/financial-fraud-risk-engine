@@ -287,3 +287,26 @@ def test_search(loaded):
 def test_config_endpoint_exposes_thresholds_and_disclaimer(loaded):
     c = loaded.get("/api/analysis/config").json()
     assert {r["code"] for r in c["rules"]} >= {"HIGH_VELOCITY", "CIRCULAR_FLOW"} and "not a probability" in c["score_disclaimer"]
+
+
+# ------------------------------------------------- opt-in structuring scenario via API
+def test_run_with_structuring_scenario_produces_structuring_alert(client):
+    r = client.post("/api/analysis/run", json={"num_accounts": 60, "num_normal_transactions": 300, "include_structuring": True})
+    assert r.status_code == 202
+    assert wait_done(client)["status"] == "completed"
+    assert "structuring scenario" in client.get("/api/dataset").json()["name"]
+    alerts = client.get("/api/alerts", params={"reason": "STRUCTURING", "page_size": 50}).json()
+    assert alerts["meta"]["total"] == 1
+    d = client.get(f"/api/alerts/{alerts['items'][0]['alert_id']}").json()
+    m = [x for x in d["rule_matches"] if x["rule_code"] == "STRUCTURING"][0]
+    assert m["metrics"]["txns_in_window"] == 6 and m["metrics"]["threshold_inr"] == 50_000
+    ev = client.get("/api/analysis/evaluation").json()
+    assert any(x["scenario_role"] == "STRUCTURING_SOURCE" for x in ev["per_scenario_role"])
+
+
+def test_structuring_default_off_and_param_validation(loaded, client):
+    assert loaded.get("/api/alerts", params={"reason": "STRUCTURING"}).json()["meta"]["total"] == 0
+    r = client.post("/api/analysis/run", json={"num_accounts": 25, "include_structuring": True})
+    assert r.status_code == 422 and r.json()["error"]["code"] == "INVALID_PARAMETER"
+    cfg = client.get("/api/analysis/config").json()
+    assert "STRUCTURING" in {x["code"] for x in cfg["rules"]} and cfg["thresholds"]["structuring_threshold_inr"] == 50_000

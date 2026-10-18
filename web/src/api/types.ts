@@ -16,7 +16,7 @@ export interface DatasetInfo {
 export interface AnalysisStatus {
   status: RunState; stage: string; error?: string | null; started_at?: string | null; finished_at?: string | null; dataset_loaded: boolean;
 }
-export interface RunRequest { source: "synthetic"; seed?: number; num_accounts?: number; num_normal_transactions?: number }
+export interface RunRequest { source: "synthetic"; seed?: number; num_accounts?: number; num_normal_transactions?: number; include_structuring?: boolean }
 
 export interface Transaction {
   transaction_id: string; sender_account_id: string; receiver_account_id: string; amount_inr: number; timestamp: string;

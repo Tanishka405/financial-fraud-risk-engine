@@ -27,6 +27,7 @@ RULE_DESCRIPTIONS: dict[str, str] = {
     "PASS_THROUGH": "Received funds were forwarded almost in full shortly afterwards, repeatedly.",
     "CIRCULAR_FLOW": "Funds moved through a short, time-ordered loop and returned to the origin account.",
     "LAYERED_MULTI_HOP": "Funds moved along a time-ordered chain of distinct accounts with little amount lost.",
+    "STRUCTURING": "Several transactions each just below a reporting-style threshold, sent by one account within a short window.",
     "BEHAVIOURAL_CHANGE": "Sent amounts shifted sharply upward between the earlier and later half of the account's activity (rank test).",
 }
 
@@ -119,6 +120,39 @@ def rule_repeated(df: pd.DataFrame, cfg: DetectionConfig) -> list[RuleHit]:
                    f"(threshold {cfg.repeated_min_count}).")
             hits.append(RuleHit("REPEATED_TRANSACTIONS", s, w, "sender", txt, ids, m))
             hits.append(RuleHit("REPEATED_TRANSACTIONS", r, w * cfg.receiver_weight_factor, "receiver", txt, ids, m))
+    return hits
+
+
+def rule_structuring(df: pd.DataFrame, cfg: DetectionConfig) -> list[RuleHit]:
+    """Adapted from the AML-Network-Graph-Engine prototype's structuring concept, with two fixes: the band is
+    bounded BELOW (an ordinary small payment is not 'just under' a threshold) and evidence is returned.
+    Amounts at or above the threshold are never counted."""
+    hits: list[RuleHit] = []
+    w = cfg.rule_weights["STRUCTURING"]
+    thr = cfg.structuring_threshold_inr
+    lo = thr * cfg.structuring_band_floor
+    band = df[(df["amount_inr"] >= lo) & (df["amount_inr"] < thr)]
+    win = cfg.structuring_window_minutes * 60.0
+    for sender, g in band.groupby("sender_account_id", sort=True):
+        if len(g) < cfg.structuring_min_txns:
+            continue
+        t = g["t_epoch"].to_numpy()
+        j = np.searchsorted(t, t + win, side="right")
+        counts = j - np.arange(len(t))
+        i = int(np.argmax(counts))
+        if counts[i] >= cfg.structuring_min_txns:
+            sub = g.iloc[i:j[i]]
+            ids, trunc = _cap(sub["transaction_id"])
+            agg = float(sub["amount_inr"].sum())
+            m = {"txns_in_window": int(counts[i]), "aggregate_inr": round(agg, 2), "threshold_inr": thr,
+                 "band_floor_inr": round(lo, 2), "window_minutes": cfg.structuring_window_minutes,
+                 "distinct_receivers": int(sub["receiver_account_id"].nunique()),
+                 "min_txns_threshold": cfg.structuring_min_txns, "evidence_truncated": trunc}
+            hits.append(RuleHit(
+                "STRUCTURING", sender, w, "sender",
+                f"{int(counts[i])} transactions each between {_inr(lo)} and {_inr(thr)} (just below the {_inr(thr)} threshold) "
+                f"within {cfg.structuring_window_minutes} minutes, totalling {_inr(agg)} (threshold {cfg.structuring_min_txns}).",
+                ids, m))
     return hits
 
 
@@ -333,7 +367,7 @@ def run_rules(transactions: pd.DataFrame, cfg: DetectionConfig) -> list[RuleHit]
         return []
     df = _prep(transactions)
     hits: list[RuleHit] = []
-    for fn in (rule_high_velocity, rule_large_amount, rule_repeated, rule_high_fanout,
+    for fn in (rule_high_velocity, rule_large_amount, rule_repeated, rule_structuring, rule_high_fanout,
                rule_pass_through, rule_flows, rule_behaviour_change):
         hits.extend(fn(df, cfg))
     return hits

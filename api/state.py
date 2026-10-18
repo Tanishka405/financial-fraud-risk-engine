@@ -95,27 +95,29 @@ class Session:
         with self.lock:
             self.status, self.error, self.finished_at = "failed", msg, now_ist()
 
-    def start_synthetic(self, seed: int | None, num_accounts: int | None, num_normal: int | None, background: bool = True) -> None:
+    def start_synthetic(self, seed: int | None, num_accounts: int | None, num_normal: int | None, background: bool = True,
+                        include_structuring: bool = False) -> None:
         self._begin()
-        job = lambda: self._run_synthetic(seed, num_accounts, num_normal)
+        job = lambda: self._run_synthetic(seed, num_accounts, num_normal, include_structuring)
         if background:
             threading.Thread(target=job, daemon=True).start()
         else:
             job()
 
-    def _run_synthetic(self, seed, num_accounts, num_normal) -> None:
+    def _run_synthetic(self, seed, num_accounts, num_normal, include_structuring=False) -> None:
         try:
             cfg = self.config if seed is None else Config(**{**self.config.__dict__, "random_seed": seed})
             with self.lock:
                 self.stage = "Generating deterministic synthetic transactions"
-            ds = generate_synthetic_dataset(cfg, num_accounts=num_accounts, num_normal_transactions=num_normal)
+            ds = generate_synthetic_dataset(cfg, num_accounts=num_accounts, num_normal_transactions=num_normal,
+                                            include_structuring=include_structuring)
             raw = [{"transaction_id": t.transaction_id, "sender_account_id": t.sender_account_id,
                     "receiver_account_id": t.receiver_account_id, "amount_inr": t.amount_inr,
                     "timestamp": t.timestamp, "transaction_type": t.transaction_type.value} for t in ds.transactions]
             with self.lock:
                 self.stage = "Validating records"
             outcome = validate_batch(raw, cfg)
-            name = f"Synthetic (seed {cfg.random_seed})"
+            name = f"Synthetic (seed {cfg.random_seed}{', + structuring scenario' if include_structuring else ''})"
             self._finish(outcome, cfg, name, "synthetic", True, seed=cfg.random_seed, scenarios=ds.account_scenarios)
         except Exception as e:  # noqa: BLE001 - surfaced to UI as failed state
             self._fail(f"{type(e).__name__}: {e}")

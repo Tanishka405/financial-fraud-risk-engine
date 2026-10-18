@@ -20,6 +20,7 @@ def _default_rule_weights() -> dict[str, float]:
         "CIRCULAR_FLOW": 0.65,
         "LAYERED_MULTI_HOP": 0.55,
         "BEHAVIOURAL_CHANGE": 0.40,
+        "STRUCTURING": 0.50,
     }
 
 
@@ -35,6 +36,12 @@ class DetectionConfig:
     receiver_weight_factor: float = 0.5  # receiver of a flagged txn gets reduced weight
     # --- REPEATED_TRANSACTIONS: same sender, receiver and amount N+ times --
     repeated_min_count: int = 5
+    # --- STRUCTURING: >= N sent txns, each just BELOW a threshold, in one window.
+    # Threshold is illustrative (NOT a legal reporting limit); set it to the limit relevant to your data.
+    structuring_threshold_inr: float = 50_000.0
+    structuring_band_floor: float = 0.80  # a txn counts only if amount in [floor*T, T)
+    structuring_window_minutes: int = 120
+    structuring_min_txns: int = 4
     # --- HIGH_FANOUT: unique receivers over the dataset window -------------
     fanout_min_receivers: int = 25
     # --- PASS_THROUGH: inflow forwarded almost whole, soon after -----------

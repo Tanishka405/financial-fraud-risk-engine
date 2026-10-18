@@ -11,7 +11,7 @@ export function renderWithProviders(ui: ReactElement, route = "/") {
 
 /** Route-keyed fetch mock. Value may be a body or a [status, body] tuple. */
 export function mockApi(routes: Record<string, unknown | [number, unknown]>) {
-  const fn = vi.fn(async (input: RequestInfo | URL) => {
+  const fn = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = String(input);
     const key = Object.keys(routes).find((k) => url.includes(k));
     if (!key) return new Response(JSON.stringify({ error: { code: "NOT_FOUND", message: `unmocked ${url}` } }), { status: 404 });

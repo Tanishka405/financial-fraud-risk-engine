@@ -125,6 +125,8 @@ def generate_synthetic_dataset(
     num_accounts: Optional[int] = None,
     num_normal_transactions: Optional[int] = None,
     window_days: int = 30,
+    include_structuring: bool = False,
+    structuring_threshold_inr: float = 50_000.0,
 ) -> SyntheticDataset:
     """Generate a full, reproducible synthetic dataset: a normal baseline plus
     every scenario listed in the module docstring.
@@ -132,6 +134,12 @@ def generate_synthetic_dataset(
     `num_accounts` / `num_normal_transactions` default to the values in
     `config` (so a small fixture dataset can be produced simply by passing a
     `Config` with small values, without duplicating generator logic).
+
+    `include_structuring` (default False) appends one OPT-IN scenario AFTER all
+    others, so the default dataset stays byte-identical: a single account sends
+    several cash deposits each just below `structuring_threshold_inr`
+    (82-99 % of it) within ~90 minutes. The threshold is illustrative, not a
+    legal reporting limit. Requires at least 30 accounts.
     """
     num_accounts = num_accounts if num_accounts is not None else config.synthetic_num_accounts
     num_normal_transactions = (
@@ -303,6 +311,24 @@ def generate_synthetic_dataset(
         transactions.append(txn)
         tag_txn(txn, "BEHAVIOURAL_CHANGE_AFTER")
     tag_account(change_account, "BEHAVIOURAL_CHANGE")
+
+    # ------------------------------------------------------------------
+    # OPT-IN: STRUCTURING. Appended last so default output is unchanged.
+    # Uses accounts[20], which no scenario above reserves.
+    # ------------------------------------------------------------------
+    if include_structuring:
+        if num_accounts < 30:
+            raise ValueError(f"include_structuring requires at least 30 accounts, got {num_accounts}")
+        struct_account = accounts[20]
+        s_start = window_start + timedelta(seconds=float(rng.uniform(0, (window_end - window_start).total_seconds() - 7200)))
+        struct_receivers = rng.choice([a for a in accounts if a != struct_account], size=6, replace=False)
+        for receiver in struct_receivers:
+            ts = s_start + timedelta(minutes=float(rng.uniform(0, 90)))
+            amount = float(round(rng.uniform(0.82 * structuring_threshold_inr, 0.99 * structuring_threshold_inr), 2))
+            txn = factory.make(struct_account, receiver, ts, amount=amount, txn_type=TransactionType.CASH_DEPOSIT)
+            transactions.append(txn)
+            tag_txn(txn, "STRUCTURING")
+        tag_account(struct_account, "STRUCTURING_SOURCE")
 
     # ------------------------------------------------------------------
     # Sort by timestamp so the resulting dataset reads like a real feed.
