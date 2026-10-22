@@ -1,9 +1,23 @@
-import { forwardRef, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
 const base = "h-8 w-full rounded-md border border-line-strong bg-s2 px-2.5 text-[13px] text-fg placeholder:text-fg-3 transition-colors hover:border-[#3a4d78] focus:border-cyan focus:outline-none focus:ring-1 focus:ring-cyan/40";
 
-export function Field({ label, children, hint, className }: { label: string; children: ReactNode; hint?: string; className?: string }) {
+/**
+ * `group` must be used when the children are a composite control (e.g. Segmented) rather than a single input:
+ * a <label> implicitly names only its FIRST labelable descendant, which would mislabel the first option.
+ */
+export function Field({ label, children, hint, className, group }: { label: string; children: ReactNode; hint?: string; className?: string; group?: boolean }) {
+  const id = useId();
+  if (group) {
+    return (
+      <div role="group" aria-labelledby={id} className={cn("flex min-w-0 flex-col gap-1", className)}>
+        <span id={id} className="label">{label}</span>
+        {children}
+        {hint && <span className="text-2xs text-fg-3">{hint}</span>}
+      </div>
+    );
+  }
   return (
     <label className={cn("flex min-w-0 flex-col gap-1", className)}>
       <span className="label">{label}</span>

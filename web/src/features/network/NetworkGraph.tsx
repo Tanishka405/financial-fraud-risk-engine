@@ -5,20 +5,24 @@ import type { GraphData, GraphEdge, GraphNode } from "@/api/types";
 import { Button } from "@/components/ui/Button";
 import { inr, inrCompact } from "@/lib/format";
 import { NEUTRAL_NODE, SEVERITY } from "@/lib/tokens";
+import { communityColor } from "./palette";
 import { AccountNode, type AccountNodeData } from "./AccountNode";
 import { FlowEdge, type FlowEdgeData } from "./FlowEdge";
 import { computeLayout, edgeWidth, parallelOffsets } from "./layout";
 
 const nodeTypes = { account: AccountNode };
 const edgeTypes = { flow: FlowEdge };
-const nodeColor = (n: GraphNode) => (n.has_alert && n.severity ? SEVERITY[n.severity].hex : NEUTRAL_NODE);
+const riskColor = (n: GraphNode) => (n.has_alert && n.severity ? SEVERITY[n.severity].hex : NEUTRAL_NODE);
+/** Fill depends on the colour mode. In community mode, alerted accounts keep a severity-coloured ring so risk stays visible. */
+export const nodeFill = (n: GraphNode, by: "risk" | "community") => (by === "community" ? communityColor(n.community_id) : riskColor(n));
+export const nodeRing = (n: GraphNode, by: "risk" | "community") => (by === "community" && n.has_alert && n.severity ? SEVERITY[n.severity].hex : null);
 
 interface Props {
   graph: GraphData; selectedId?: string | null; onSelect?: (id: string | null) => void; interactive?: boolean; showLabels?: boolean;
-  onHoverEdge?: (e: GraphEdge | null) => void; onHoverNode?: (n: GraphNode | null) => void; minimap?: boolean;
+  onHoverEdge?: (e: GraphEdge | null) => void; onHoverNode?: (n: GraphNode | null) => void; minimap?: boolean; colorBy?: "risk" | "community";
 }
 
-function Inner({ graph, selectedId, onSelect, interactive = true, showLabels, onHoverEdge, onHoverNode, minimap }: Props) {
+function Inner({ graph, selectedId, onSelect, interactive = true, showLabels, onHoverEdge, onHoverNode, minimap, colorBy = "risk" }: Props) {
   const layout = useMemo(() => computeLayout(graph), [graph]);
   const { fitView } = useReactFlow();
   const [hover, setHover] = useState<string | null>(null);
@@ -34,12 +38,12 @@ function Inner({ graph, selectedId, onSelect, interactive = true, showLabels, on
   useEffect(() => {
     setNodes(graph.nodes.map((n) => {
       const p = layout.get(n.id) ?? { x: 0, y: 0, r: 10 };
-      const data: AccountNodeData = { label: n.id, r: p.r, color: nodeColor(n), center: n.is_center, selected: false, dim: false, showLabel: false, alert: n.has_alert };
+      const data: AccountNodeData = { label: n.id, r: p.r, color: nodeFill(n, colorBy), center: n.is_center, selected: false, dim: false, showLabel: false, alert: n.has_alert, ring: nodeRing(n, colorBy) };
       return { id: n.id, type: "account", position: { x: p.x - p.r, y: p.y - p.r }, data, draggable: interactive, selectable: false };
     }));
     const t = setTimeout(() => void fitView({ padding: 0.18, duration: 250 }), 30);
     return () => clearTimeout(t);
-  }, [graph, layout, interactive, setNodes, fitView]);
+  }, [graph, layout, interactive, colorBy, setNodes, fitView]);
 
   useEffect(() => {
     const many = graph.nodes.length > 28;
@@ -89,7 +93,7 @@ function Inner({ graph, selectedId, onSelect, interactive = true, showLabels, on
 }
 
 export function NetworkGraph(p: Props) {
-  const key = useMemo(() => `${p.graph.mode}|${p.graph.center}|${p.graph.nodes.map((n) => n.id).join(",")}|${p.graph.edges.length}`, [p.graph]);
+  const key = useMemo(() => `${p.colorBy ?? "risk"}|${p.graph.mode}|${p.graph.center}|${p.graph.nodes.map((n) => n.id).join(",")}|${p.graph.edges.length}`, [p.graph, p.colorBy]);
   return (
     <ReactFlowProvider>
       <div className="size-full" aria-label="Transaction network graph" role="application"><Inner key={key} {...p} /></div>

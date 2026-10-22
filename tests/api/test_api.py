@@ -310,3 +310,76 @@ def test_structuring_default_off_and_param_validation(loaded, client):
     assert r.status_code == 422 and r.json()["error"]["code"] == "INVALID_PARAMETER"
     cfg = client.get("/api/analysis/config").json()
     assert "STRUCTURING" in {x["code"] for x in cfg["rules"]} and cfg["thresholds"]["structuring_threshold_inr"] == 50_000
+
+
+# ------------------------------------------------------------- graph analytics (descriptive metrics)
+def _acct(c, aid):
+    return c.get(f"/api/accounts/{aid}").json()
+
+
+def test_account_detail_graph_analytics_block_is_valid_and_labelled(loaded):
+    aid = loaded.get("/api/accounts", params={"page_size": 1}).json()["items"][0]["account_id"]
+    d = _acct(loaded, aid)
+    g = d["graph_analytics"]
+    assert 0 < g["pagerank"] <= 1 and 0 <= g["betweenness"] <= 1
+    assert 0 <= g["pagerank_percentile"] <= 100 and 0 <= g["betweenness_percentile"] <= 100
+    assert g["community_size"] >= 1 and 0 <= g["community_id"] < g["n_communities"]
+    assert g["betweenness_method"] == "exact" and "NOT risk signals" in g["note"]
+    assert {"observed", "computed_features", "graph_metrics", "scores", "rule_matches", "model_signal"} <= set(d)  # additive only
+
+
+def test_graph_nodes_carry_global_community_ids_even_when_truncated(loaded):
+    g = loaded.get("/api/graph", params={"limit_nodes": 5}).json()
+    assert g["meta"]["truncated"] is True and len(g["nodes"]) <= 5
+    for n in g["nodes"]:
+        assert n["community_id"] == _acct(loaded, n["id"])["graph_analytics"]["community_id"]  # same id in every view
+    assert g["meta"]["n_communities"] >= 1 and g["meta"]["modularity"] is not None
+    assert "full dataset graph" in g["meta"]["communities_note"]
+
+
+def test_filter_leaving_no_edges_returns_empty_but_valid_graph_with_meta(loaded):
+    g = loaded.get("/api/graph", params={"min_amount": 10**12}).json()
+    assert g["nodes"] == [] and g["edges"] == [] and g["meta"]["node_count"] == 0
+    assert g["meta"]["n_communities"] >= 1  # dataset-level analytics unaffected by the view filter
+
+
+def test_centered_graph_depth_three_dense_view_is_bounded_and_complete(loaded):
+    g = loaded.get("/api/graph", params={"center": "ACC00011", "depth": 3, "limit_nodes": 40}).json()
+    assert len(g["nodes"]) <= 40 and all(isinstance(n["community_id"], int) for n in g["nodes"])
+    ids = {n["id"] for n in g["nodes"]}
+    assert all(e["source"] in ids and e["target"] in ids for e in g["edges"])  # no dangling edges
+
+
+def test_communities_endpoint_partitions_all_accounts(loaded):
+    c = loaded.get("/api/graph/communities", params={"limit": 100}).json()
+    n_acc = loaded.get("/api/dataset/summary").json()["kpis"]["total_accounts"]
+    assert c["available"] and c["total"] == len(c["items"])
+    assert sum(i["size"] for i in c["items"]) == n_acc  # every account in exactly one community
+    assert [i["community_id"] for i in c["items"]] == list(range(c["total"])) and c["items"][0]["size"] >= c["items"][-1]["size"]
+    assert all(0 <= i["internal_txn_share"] <= 1 for i in c["items"] if i["internal_txn_share"] is not None)
+    assert "not used in the risk score" in c["note"] and "interpretation" in c
+    assert loaded.get("/api/graph/communities", params={"limit": 0}).status_code == 422
+
+
+def test_disconnected_pairs_give_small_communities_and_zero_betweenness(client):
+    rows = [f"T{i},P{i}a,P{i}b,100,2024-03-01 10:0{i}:00,UPI" for i in range(3)]
+    assert upload(client, CSV_HEADER + "\n".join(rows) + "\n").status_code == 202
+    wait_done(client)
+    c = client.get("/api/graph/communities").json()
+    assert c["total"] == 3 and [i["size"] for i in c["items"]] == [2, 2, 2]
+    g = _acct(client, "P0a")["graph_analytics"]
+    assert g["betweenness"] == 0 and g["community_size"] == 2
+    assert client.get("/api/graph").json()["meta"]["node_count"] == 6  # every account renders; none dropped
+
+
+def test_analytics_failure_is_contained_across_endpoints(client, monkeypatch):
+    monkeypatch.setattr("core.detection.pipeline.compute_graph_analytics", lambda g: (_ for _ in ()).throw(RuntimeError("boom")))
+    client.post("/api/analysis/run", json={"num_accounts": 60, "num_normal_transactions": 300})
+    assert wait_done(client)["status"] == "completed"  # detection still completes
+    assert any("Graph analytics unavailable" in n for n in client.get("/api/dataset").json()["notes"])
+    aid = client.get("/api/accounts", params={"page_size": 1}).json()["items"][0]["account_id"]
+    assert _acct(client, aid)["graph_analytics"] is None
+    g = client.get("/api/graph", params={"limit_nodes": 10}).json()
+    assert g["nodes"] and all(n["community_id"] is None for n in g["nodes"]) and g["meta"]["modularity"] is None
+    c = client.get("/api/graph/communities").json()
+    assert c["available"] is False and c["items"] == []

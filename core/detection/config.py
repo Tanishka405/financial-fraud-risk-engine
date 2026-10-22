@@ -72,6 +72,9 @@ class DetectionConfig:
     model_min_accounts: int = 30
     model_n_estimators: int = 200
     model_random_state: int = 42
+    # OFF by default: PageRank/betweenness/community features showed no demonstrated gain on synthetic data
+    # (see scripts/evaluate_detection.py --graph-ablation). Flip only after evaluating on your own data.
+    include_graph_features_in_model: bool = False
     # --- Combined risk index ----------------------------------------------
     rule_share: float = 0.7  # combined = rule_share*rule + (1-rule_share)*model
     # --- Alerting ----------------------------------------------------------

@@ -8,6 +8,7 @@ import { RuleMatchCard } from "@/components/domain/RuleMatchCard";
 import { TransactionDrawer } from "@/components/domain/TransactionDrawer";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, PageHeader } from "@/components/ui/Card";
+import { GraphStructureCard } from "@/components/domain/GraphStructureCard";
 import { ErrorState } from "@/components/ui/States";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Tip } from "@/components/ui/Tooltip";
@@ -50,6 +51,8 @@ export default function AccountDetailPage() {
             <Row k="Model percentile" help={HELP.model_score} v={d.scores.model_score == null ? "model not run" : num(d.scores.model_score)} /></dl>
           <p className="px-4 pb-3 text-2xs text-fg-3">Ordinal index for review priority — not a probability of fraud.</p></Card>
       </div>
+
+      <div className="mt-4"><GraphStructureCard g={d.graph_analytics} /></div>
 
       <Card className="mt-4"><CardHeader title="Activity timeline" subtitle={`Sent vs received value per ${d.timeline.bucket} (IST)`} />
         <div className="h-56 px-2 pb-3" role="img" aria-label="Sent and received value over time"><ResponsiveContainer width="100%" height="100%">

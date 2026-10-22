@@ -2,6 +2,7 @@ import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ApiError } from "@/api/client";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Field, Input, Segmented } from "@/components/ui/Field";
 import { Pagination } from "@/components/ui/Pagination";
 import { ErrorState } from "@/components/ui/States";
 import { SeverityBadge } from "@/components/domain/badges";
@@ -72,5 +73,23 @@ describe("RequireDataset (first-run, loading and error states)", () => {
     mockApi({ "/api/dataset": [500, { error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred." } }] });
     renderWithProviders(<RequireDataset><p>x</p></RequireDataset>);
     expect(await screen.findByRole("alert")).toHaveTextContent("unexpected error");
+  });
+});
+
+describe("Field / Segmented accessibility", () => {
+  it("every option of a segmented control keeps its own accessible name (label must not rename the first radio)", () => {
+    renderWithProviders(
+      <Field label="Colour by" group><Segmented label="Colour mode" value="risk" onChange={() => {}} options={[{ value: "risk", label: "Risk" }, { value: "community", label: "Community" }]} /></Field>,
+    );
+    expect(screen.getByRole("radio", { name: "Risk" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Community" })).not.toBeChecked();
+    expect(screen.getByRole("group", { name: "Colour by" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Colour mode" })).toBeInTheDocument();
+    expect(screen.getAllByRole("radio")).toHaveLength(2);
+    expect(screen.queryByRole("radio", { name: /Colour by/ })).toBeNull(); // the label must not rename an option
+  });
+  it("a plain Field still labels its single input", () => {
+    renderWithProviders(<Field label="Seed"><Input /></Field>);
+    expect(screen.getByLabelText("Seed")).toBeInTheDocument();
   });
 });

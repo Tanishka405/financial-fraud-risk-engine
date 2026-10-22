@@ -95,6 +95,7 @@ def graph(center: str | None = Query(None, max_length=64), depth: int = Query(1,
                       "degree_total": int(gm.in_degree.get(a, 0) + gm.out_degree.get(a, 0)),
                       "counterparties": int(gm.unique_counterparties_total.get(a, 0)),
                       "visible_in": int(len(sub_in)), "visible_out": int(len(sub_out)),
+                      "community_id": (int(s.ga_nodes.loc[a, "community_id"]) if (s.ga_nodes is not None and a in s.ga_nodes.index) else None),
                       "visible_in_inr": round(float(sub_in["amount_inr"].sum()), 2),
                       "visible_out_inr": round(float(sub_out["amount_inr"].sum()), 2)})
     return clean({"mode": mode, "center": center, "depth": depth if center else None,
@@ -103,5 +104,34 @@ def graph(center: str | None = Query(None, max_length=64), depth: int = Query(1,
                            "transactions_represented": int(len(sub)), "truncated": truncated,
                            "scope_nodes": scope_total, "limit_nodes": limit_nodes,
                            "max_transaction_edges": HARD_MAX_TXN_EDGES,
+                           "n_communities": (int(len(r.graph_analytics.communities)) if r.graph_analytics is not None else None),
+                           "modularity": (r.graph_analytics.modularity if r.graph_analytics is not None else None),
+                           "communities_note": "Community ids are computed on the full dataset graph (seeded Louvain), not on this view.",
                            "note": ("Each edge is one ordered account pair summarising all its transactions."
                                     if mode == "aggregated" else "Each edge is one individual transaction (parallel edges preserved).")}})
+
+
+@router.get("/graph/communities", tags=["graph"])
+def communities(limit: int = Query(25, ge=1, le=100)):
+    """Largest communities (dataset-wide, seeded Louvain). Descriptive structure only -- not a risk signal."""
+    s = require_data()
+    ga = s.result.graph_analytics
+    if ga is None or s.ga_nodes is None:
+        return {"available": False, "reason": "Graph analytics were unavailable for this dataset.", "items": [], "total": 0}
+    scores = s.result.account_scores.set_index("account_id")
+    nodes = s.ga_nodes
+    items = []
+    for row in ga.communities.head(limit).itertuples(index=False):
+        members = nodes.index[nodes["community_id"] == row.community_id]
+        sc = scores.reindex(members)
+        top = sc.sort_values("risk_score", ascending=False).head(5)
+        items.append({"community_id": int(row.community_id), "size": int(row.size), "internal_txn_share": row.internal_txn_share,
+                      "total_value_inr": row.total_value_inr,
+                      "alerted_accounts": int(sum(f"ALR-{m}" in s.alerts_by_id for m in members)),
+                      "top_accounts": [{"account_id": a, "risk_score": float(v)} for a, v in top["risk_score"].items()]})
+    weak = ga.modularity is not None and ga.modularity < 0.3
+    return clean({"available": True, "total": int(len(ga.communities)), "modularity": ga.modularity, "items": items,
+                  "betweenness_method": ga.betweenness_method,
+                  "interpretation": ("Weak community structure (modularity < 0.3): groupings may be largely arbitrary."
+                                     if weak else "Moderate/strong community structure."),
+                  "note": "Descriptive structure only; not used in the risk score."})

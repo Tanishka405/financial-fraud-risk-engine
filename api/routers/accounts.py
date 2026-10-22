@@ -31,6 +31,23 @@ def _table(s) -> pd.DataFrame:
     return d.reset_index()
 
 
+GA_NOTE = ("Structural metrics computed from the whole dataset's transaction graph. They describe position in the network "
+           "and are NOT risk signals: they are excluded from the risk score and, by default, from the model.")
+
+
+def _ga_block(s, account_id: str):
+    """Additive block; None when graph analytics were unavailable for this dataset."""
+    if s.ga_nodes is None or account_id not in s.ga_nodes.index:
+        return None
+    r = s.ga_nodes.loc[account_id]
+    ga = s.result.graph_analytics
+    return clean({"pagerank": r["pagerank"], "pagerank_percentile": r["pagerank_percentile"],
+                  "betweenness": r["betweenness"], "betweenness_percentile": r["betweenness_percentile"],
+                  "community_id": int(r["community_id"]), "community_size": int(r["community_size"]),
+                  "n_communities": int(len(ga.communities)), "modularity": ga.modularity,
+                  "betweenness_method": ga.betweenness_method, "note": GA_NOTE})
+
+
 @router.get("/accounts", tags=["accounts"])
 def list_accounts(page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=MAX_PAGE_SIZE),
                   q: str | None = Query(None, max_length=100), severity: str | None = None, has_alert: bool | None = None,
@@ -103,6 +120,7 @@ def account_detail(account_id: str):
         "graph_metrics": {k: g[k] for k in g if k not in ("account_id", "inflow_outflow_ratio")},
         "scores": {"rule_score": sc["rule_score"], "model_score": sc["model_score"], "risk_score": sc["risk_score"],
                    "severity": sc["severity"]},
+        "graph_analytics": _ga_block(s, account_id),
         "rule_matches": hits,
         "model_signal": {"model_score": sc["model_score"], "feature_deviations": alert.feature_deviations if alert else [],
                          "note": "Isolation Forest percentile within this dataset (relative, not a probability). "

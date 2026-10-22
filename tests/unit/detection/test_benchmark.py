@@ -82,3 +82,46 @@ def test_rules_only_ablation_has_no_model_signal():
     r = run_seed(2, det=DetectionConfig(model_enabled=False), **SMALL)
     assert r["auc_model_score"] is None
     assert r["alert_recall"] is not None
+
+
+# ------------------------------------------------------------------ paired ablation machinery
+def test_paired_stats_known_values_and_ci_contains_mean():
+    from core.detection.benchmark import paired_stats
+    s = paired_stats([0.5, 0.6, 0.7, 0.8], [0.6, 0.7, 0.7, 0.7])
+    assert s["n"] == 4 and s["wins"] == 2 and s["losses"] == 1 and s["ties"] == 1
+    assert s["mean_diff"] == pytest.approx(0.025) and s["ci95"][0] <= s["mean_diff"] <= s["ci95"][1]
+    assert paired_stats([0.5, 0.6], [0.5, 0.6])["wilcoxon_p"] is None  # all ties -> no test
+    d = paired_stats([0.5, None, 0.7], [0.6, 0.9, None])  # incomplete pairs dropped and counted, never zero-filled
+    assert d["n"] == 1 and d["dropped"] == 2
+    assert paired_stats([], [])["mean_diff"] is None
+
+
+def test_paired_stats_is_deterministic():
+    from core.detection.benchmark import paired_stats
+    a, b = [0.1 * i for i in range(10)], [0.1 * i + 0.02 * (i % 3) for i in range(10)]
+    assert paired_stats(a, b) == paired_stats(a, b)
+
+
+def test_verdict_only_claims_improvement_when_ci_excludes_zero():
+    from core.detection.benchmark import verdict
+    assert verdict({"ci95": [0.01, 0.05]}).startswith("improvement demonstrated")
+    assert verdict({"ci95": [-0.05, -0.01]}).startswith("degradation demonstrated")
+    assert verdict({"ci95": [-0.01, 0.05]}).startswith("no demonstrated difference")  # the conservative default
+    assert verdict({"ci95": [0.01, 0.05]}, higher_is_better=False).startswith("degradation")
+    assert verdict({"ci95": None}) == "insufficient data"
+
+
+def test_heldout_and_dev_seeds_are_disjoint_and_declared():
+    from core.detection.benchmark import DEV_SEEDS, HELDOUT_SEEDS, PRIMARY_METRIC
+    assert set(DEV_SEEDS).isdisjoint(HELDOUT_SEEDS) and len(HELDOUT_SEEDS) >= 30
+    assert PRIMARY_METRIC == "auc_model_score"
+
+
+def test_graph_ablation_shape_labels_dev_seeds_and_pairing():
+    from core.detection.benchmark import ablation_to_markdown, graph_ablation
+    a = graph_ablation([1, 2], num_accounts=60, num_normal=300)
+    assert a["n_seeds"] == 2 and a["is_heldout"] is False and "do NOT estimate real-world" in a["caveat"]
+    assert set(a["metrics"]) >= {"auc_model_score", "auc_risk_score", "alert_recall"}
+    assert a["metrics"]["auc_model_score"]["paired"]["n"] == 2
+    assert "DEVELOPMENT seeds (not valid evidence)" in ablation_to_markdown(a)
+    assert graph_ablation([101, 102], num_accounts=60, num_normal=300)["is_heldout"] is True

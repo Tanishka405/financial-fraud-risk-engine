@@ -1,13 +1,17 @@
 import { SEVERITY, SEVERITY_ORDER, NEUTRAL_NODE } from "@/lib/tokens";
 
-export function Legend({ mode }: { mode: "aggregated" | "transactions" }) {
+export function Legend({ mode, colorBy = "risk" }: { mode: "aggregated" | "transactions"; colorBy?: "risk" | "community" }) {
   return (
     <div className="max-w-[17rem] rounded-lg border border-line-strong bg-s2/95 p-3 text-[11px] leading-snug text-fg-2 shadow-xl backdrop-blur" aria-label="Legend">
       <p className="label mb-1.5">Legend</p>
+      {colorBy === "community" ? (
+        <p className="mb-1"><b className="text-fg">Fill colour</b> = community (palette repeats every 8). A coloured <b className="text-fg">ring</b> marks an alerted account and shows its severity. Communities are structural groupings, not risk signals.</p>
+      ) : (
       <ul className="space-y-1">
         {SEVERITY_ORDER.slice().reverse().map((s) => (<li key={s} className="flex items-center gap-2"><span className="size-2.5 rounded-full" style={{ background: SEVERITY[s].hex }} />{SEVERITY[s].label} severity alert</li>))}
         <li className="flex items-center gap-2"><span className="size-2.5 rounded-full" style={{ background: NEUTRAL_NODE }} />Account with no alert</li>
       </ul>
+      )}
       <div className="my-2 h-px bg-line" />
       <p><b className="text-fg">Node size</b> grows with the number of transactions touching the account.</p>
       <p className="mt-1"><b className="text-fg">Edge thickness</b> grows with INR value; arrows point from sender to receiver.</p>

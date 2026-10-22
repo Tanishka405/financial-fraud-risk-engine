@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowDownLeft, ArrowUpRight, Crosshair, Network as NetIcon, Search, X } from "lucide-react";
-import { useAccount, useGraph, useSearch } from "@/api/hooks";
+import { useAccount, useCommunities, useGraph, useSearch } from "@/api/hooks";
 import type { GraphEdge, GraphNode, GraphParams } from "@/api/types";
 import { Callout, EmptyState, ErrorState } from "@/components/ui/States";
 import { RiskBar, RuleBadge, SeverityBadge } from "@/components/domain/badges";
@@ -11,6 +11,7 @@ import { Field, Input, Segmented, Toggle } from "@/components/ui/Field";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Tip } from "@/components/ui/Tooltip";
 import { Legend } from "@/features/network/Legend";
+import { communityColor } from "@/features/network/palette";
 import { NetworkGraph, edgeSummary } from "@/features/network/NetworkGraph";
 import { useDebounced } from "@/lib/useDebounced";
 import { dayToIso, inr, int, dt } from "@/lib/format";
@@ -21,6 +22,7 @@ export default function NetworkPage() {
   const center = sp.get("account") ?? "";
   const depth = Number(sp.get("depth") ?? 1) as 1 | 2 | 3;
   const mode = (sp.get("mode") ?? "aggregated") as "aggregated" | "transactions";
+  const colorBy = (sp.get("color") === "community" ? "community" : "risk") as "risk" | "community";
   const setParam = (k: string, v: string | null) => setSp((p) => { const n = new URLSearchParams(p); if (v) n.set(k, v); else n.delete(k); return n; }, { replace: true });
 
   const [minAmt, setMinAmt] = useState(""); const [from, setFrom] = useState(""); const [to, setTo] = useState("");
@@ -37,6 +39,7 @@ export default function NetworkPage() {
   const g = useGraph(params);
   const graph = g.data;
   const acct = useAccount(selected ?? undefined);
+  const comm = useCommunities(!selected);
   const sel = graph?.nodes.find((n) => n.id === selected);
   const conns = useMemo(() => {
     if (!graph || !selected) return { inn: [] as GraphEdge[], out: [] as GraphEdge[] };
@@ -60,8 +63,9 @@ export default function NetworkPage() {
                 {sugg.data.accounts.map((a) => (<li key={a.account_id}><button role="option" aria-selected="false" className="flex w-full items-center justify-between px-2.5 py-1.5 text-left hover:bg-s4" onClick={() => focus(a.account_id)}><span className="font-mono text-xs">{a.account_id}</span><SeverityBadge severity={a.severity} /></button></li>))}
               </ul>)}
           </Field>
-          <Field label="Depth"><Segmented label="Graph depth" value={depth} onChange={(v) => setParam("depth", String(v))} options={[{ value: 1, label: "1 hop" }, { value: 2, label: "2" }, { value: 3, label: "3" }]} /></Field>
-          <Field label="Edges"><Segmented label="Edge mode" value={mode} onChange={(v) => setParam("mode", v)} options={[{ value: "aggregated", label: "Aggregated" }, { value: "transactions", label: "Individual" }]} /></Field>
+          <Field label="Depth" group><Segmented label="Graph depth" value={depth} onChange={(v) => setParam("depth", String(v))} options={[{ value: 1, label: "1 hop" }, { value: 2, label: "2" }, { value: 3, label: "3" }]} /></Field>
+          <Field label="Colour by" group><Segmented label="Colour mode" value={colorBy} onChange={(v) => setParam("color", v === "risk" ? null : v)} options={[{ value: "risk", label: "Risk" }, { value: "community", label: "Community" }]} /></Field>
+          <Field label="Edges" group><Segmented label="Edge mode" value={mode} onChange={(v) => setParam("mode", v)} options={[{ value: "aggregated", label: "Aggregated" }, { value: "transactions", label: "Individual" }]} /></Field>
           <Field label="Min ₹" className="w-28"><Input type="number" min={0} aria-label="Minimum transaction amount" value={minAmt} onChange={(e) => setMinAmt(e.target.value)} /></Field>
           <Field label="From (IST)"><Input type="date" aria-label="From date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
           <Field label="To (IST)"><Input type="date" aria-label="To date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
@@ -84,11 +88,11 @@ export default function NetworkPage() {
             : g.isError ? <ErrorState error={g.error} onRetry={() => void g.refetch()} />
             : !graph ? <Skeleton className="m-4 h-[90%]" />
             : graph.nodes.length === 0 ? <EmptyState icon={<NetIcon className="size-5" />} title="No transactions in this view" body="No flows meet the current amount and date filters. Relax them to see the network." action={<Button onClick={reset}>Reset filters</Button>} />
-            : <NetworkGraph graph={graph} selectedId={selected} onSelect={setSelected} onHoverEdge={setHoverEdge} onHoverNode={setHoverNode} minimap={graph.nodes.length > 30} />}
+            : <NetworkGraph graph={graph} colorBy={colorBy} selectedId={selected} onSelect={setSelected} onHoverEdge={setHoverEdge} onHoverNode={setHoverNode} minimap={graph.nodes.length > 30} />}
           {graph && graph.nodes.length > 0 && (
             <>
               <div className="pointer-events-none absolute left-3 bottom-3 z-10 flex flex-col gap-2">
-                {showLegend && <div className="pointer-events-auto"><Legend mode={graph.mode} /></div>}
+                {showLegend && <div className="pointer-events-auto"><Legend mode={graph.mode} colorBy={colorBy} /></div>}
               </div>
               {(hoverEdge || hoverNode) && (
                 <div className="pointer-events-none absolute left-3 top-14 z-10 w-64 rounded-lg border border-line-strong bg-s2/95 p-2.5 text-xs shadow-xl backdrop-blur">
@@ -98,14 +102,14 @@ export default function NetworkPage() {
                     {hoverEdge.aggregated ? <div className="num text-fg-3">{dt(hoverEdge.first_at)} – {dt(hoverEdge.last_at)}</div> : <div className="num text-fg-3">{dt(hoverEdge.timestamp)} · {hoverEdge.transaction_type}</div>}
                     {hoverEdge.flagged && <div className="mt-1 text-amber">Cited as rule evidence</div>}</>)}
                 </div>)}
-              <div className="pointer-events-none absolute left-1/2 top-3.5 z-10 hidden -translate-x-1/2 text-2xs text-fg-3 sm:block">{int(graph.meta.node_count)} accounts · {int(graph.meta.edge_count)} edges · {int(graph.meta.transactions_represented)} txns</div>
+              <div className="pointer-events-none absolute left-1/2 top-3.5 z-10 hidden -translate-x-1/2 text-2xs text-fg-3 sm:block">{int(graph.meta.node_count)} accounts · {int(graph.meta.edge_count)} edges · {int(graph.meta.transactions_represented)} txns{colorBy === "community" && graph.meta.n_communities !== null && ` · ${int(graph.meta.n_communities)} communities in dataset${graph.meta.modularity !== null && graph.meta.modularity < 0.3 ? " (weak structure)" : ""}`}</div>
             </>)}
         </Card>
 
         <Card className="max-h-[calc(100vh-17rem)] min-h-[300px] overflow-auto">
           {!selected ? (
             <EmptyState icon={<Crosshair className="size-5" />} title="Select an account" body="Click a node to see its metrics and connections. Hover for quick details."
-              action={hiDegree.length > 0 && <div className="text-xs text-fg-3">Most connected here: {hiDegree.map((id) => <button key={id} className="mr-1.5 font-mono text-cyan hover:underline" onClick={() => setSelected(id)}>{id}</button>)}</div>} />
+              action={<div className="space-y-3 text-left">{hiDegree.length > 0 && <div className="text-xs text-fg-3">Most connected here: {hiDegree.map((id) => <button key={id} className="mr-1.5 font-mono text-cyan hover:underline" onClick={() => setSelected(id)}>{id}</button>)}</div>}{comm.data?.available && comm.data.items.length > 0 && (<div className="rounded-lg border border-line bg-s2/60 p-2.5"><div className="label mb-1.5">Largest communities</div><ul className="space-y-1">{comm.data.items.map((c) => (<li key={c.community_id} className="flex items-center justify-between gap-2 text-xs"><span className="flex items-center gap-1.5 text-fg-2"><i className="inline-block size-2 rounded-full" style={{ background: communityColor(c.community_id) }} aria-hidden />#{c.community_id} · {c.size} accounts</span><span className="num text-fg-3">{c.alerted_accounts} alerted</span></li>))}</ul><p className="mt-1.5 text-2xs text-fg-3">{comm.data.interpretation} Descriptive only; not a risk signal.</p></div>)}</div>} />
           ) : (
             <div className="p-4">
               <div className="flex items-start justify-between"><div><div className="label">Account</div><div className="font-mono text-base text-fg">{selected}</div></div><Button variant="ghost" size="sm" aria-label="Clear selection" onClick={() => setSelected(null)}><X className="size-4" /></Button></div>
@@ -119,6 +123,11 @@ export default function NetworkPage() {
                   <div><dt className="text-fg-3">Received</dt><dd className="num text-fg">{int(acct.data.observed.txn_count_received)} · {inr(acct.data.observed.total_amount_received_inr)}</dd></div>
                   <div><dt className="text-fg-3">Counterparties <Tip text={HELP.counterparties} /></dt><dd className="num text-fg">{int(acct.data.graph_metrics.unique_counterparties_total)}</dd></div>
                   <div><dt className="text-fg-3">Max daily txns <Tip text={HELP.max_daily} /></dt><dd className="num text-fg">{int(acct.data.computed_features.max_daily_txn_count)}</dd></div>
+                  {acct.data.graph_analytics && (<>
+                    <div><dt className="text-fg-3">PageRank pct.</dt><dd className="num text-fg">p{acct.data.graph_analytics.pagerank_percentile.toFixed(0)}</dd></div>
+                    <div><dt className="text-fg-3">Betweenness pct.</dt><dd className="num text-fg">p{acct.data.graph_analytics.betweenness_percentile.toFixed(0)}</dd></div>
+                    <div className="col-span-2"><dt className="text-fg-3">Community <Tip text="Structural group (seeded Louvain on the full dataset). Descriptive only; not a risk signal." /></dt><dd className="num flex items-center gap-1.5 text-fg"><i className="inline-block size-2.5 rounded-full" style={{ background: communityColor(acct.data.graph_analytics.community_id) }} aria-hidden />#{acct.data.graph_analytics.community_id} · {acct.data.graph_analytics.community_size} accounts</dd></div>
+                  </>)}
                   <div className="col-span-2"><dt className="text-fg-3">Inflow / outflow <Tip text={HELP.inflow_outflow} /></dt><dd className="num text-fg">{acct.data.computed_features.inflow_outflow_ratio?.toFixed(2) ?? acct.data.computed_features.inflow_outflow_ratio_note}</dd></div>
                 </dl>)}
               {[["Incoming", conns.inn, ArrowDownLeft, "source"], ["Outgoing", conns.out, ArrowUpRight, "target"]].map(([label, list, Icon, key]) => {

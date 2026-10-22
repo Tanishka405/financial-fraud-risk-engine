@@ -24,6 +24,7 @@ from core.detection.model_features import build_model_feature_matrix
 from core.detection.rules import RULE_DESCRIPTIONS, RuleHit, run_rules
 from core.features.transaction_features import compute_account_features
 from core.graph.builder import build_transaction_graph
+from core.graph.analytics import GraphAnalytics, compute_graph_analytics
 from core.graph.metrics import compute_graph_metrics
 
 SCORE_DISCLAIMER = (
@@ -61,6 +62,7 @@ class AnalysisResult:
     detection_config: DetectionConfig
     model_ran: bool
     notes: list[str] = field(default_factory=list)
+    graph_analytics: GraphAnalytics | None = None  # descriptive; enters the model only if the config flag is on
 
 
 def dataset_fingerprint(tx: pd.DataFrame) -> str:
@@ -105,10 +107,17 @@ def run_analysis(transactions: pd.DataFrame, config: Config, det: DetectionConfi
     feats = compute_account_features(tx, config)
     graph = build_transaction_graph(tx)
     gm = compute_graph_metrics(graph)
-    X = build_model_feature_matrix(feats, gm)
+    notes: list[str] = []
+    try:
+        ga: GraphAnalytics | None = compute_graph_analytics(graph)
+        notes.extend(ga.notes)
+    except Exception as exc:  # noqa: BLE001 - descriptive metrics must never break detection
+        ga = None
+        notes.append(f"Graph analytics unavailable: {type(exc).__name__}: {exc}")
+    use_ga = det.include_graph_features_in_model and ga is not None
+    X = build_model_feature_matrix(feats, gm, ga.nodes if use_ga else None)
     hits = run_rules(tx, det)
     model = fit_score_isolation_forest(X, det) if len(X) else None
-    notes: list[str] = []
     if model is None:
         notes.append(f"Isolation Forest not run (disabled or fewer than {det.model_min_accounts} accounts); "
                      "risk_score equals rule_score.")
@@ -142,7 +151,7 @@ def run_analysis(transactions: pd.DataFrame, config: Config, det: DetectionConfi
     alerts.sort(key=lambda a: (-a.risk_score, a.account_id))
     scores = pd.DataFrame(rows, columns=["account_id", "rule_score", "model_score", "risk_score", "severity", "n_rules"])
     return AnalysisResult(dataset_fingerprint(tx), tx, feats, gm, graph, X, hits, scores, alerts, det,
-                          model is not None, notes)
+                          model is not None, notes, ga)
 
 
 def evaluate_on_synthetic(alerts: list[Alert], account_scenarios: pd.DataFrame) -> dict[str, Any]:

@@ -152,3 +152,77 @@ def to_markdown(summary: dict[str, Any], title: str = "Detection benchmark (synt
         lines.append(f"| {r['role']} | {r['mean_recall']:.2f} (min {r['min_recall']:.2f}) | {r['expected_rule'] or 'n/a'} | {d} |")
     lines += ["", f"> {summary['caveat']}"]
     return "\n".join(lines)
+
+
+# ----------------------------------------------------------------------------------------------------------
+# Paired ablation: does enabling a model option change detection? Protocol is fixed BEFORE results are viewed.
+# ----------------------------------------------------------------------------------------------------------
+DEV_SEEDS: list[int] = list(range(1, 13))  # seeds used while designing/inspecting; NOT valid evidence
+HELDOUT_SEEDS: list[int] = list(range(101, 151))  # never inspected during development
+PRIMARY_METRIC = "auc_model_score"  # the one signal the graph-feature flag directly changes (declared up front)
+ABLATION_METRICS = ("auc_model_score", "auc_risk_score", "alert_recall", "alert_precision", "false_alert_accounts")
+
+
+def paired_stats(off: list[float], on: list[float], n_boot: int = 4000, seed: int = 0) -> dict[str, Any]:
+    """Paired comparison of per-seed metric values (on - off): mean/std, bootstrap 95% CI of the mean, win/loss/tie
+    counts and a Wilcoxon signed-rank p-value. Pairs where either value is missing are dropped (and counted)."""
+    pairs = [(a, b) for a, b in zip(off, on) if a is not None and b is not None]
+    d = np.array([b - a for a, b in pairs], dtype=float)
+    n = int(d.size)
+    out: dict[str, Any] = {"n": n, "dropped": len(off) - n}
+    if n == 0:
+        return {**out, "mean_diff": None, "std_diff": None, "ci95": None, "wins": 0, "losses": 0, "ties": 0, "wilcoxon_p": None}
+    rng = np.random.default_rng(seed)
+    boots = rng.choice(d, size=(n_boot, n), replace=True).mean(axis=1)
+    p = None
+    if np.any(d != 0):
+        try:
+            from scipy.stats import wilcoxon
+            p = float(wilcoxon(d).pvalue)
+        except ValueError:
+            p = None
+    return {**out, "mean_diff": float(d.mean()), "std_diff": float(d.std(ddof=1)) if n > 1 else 0.0,
+            "ci95": [float(np.percentile(boots, 2.5)), float(np.percentile(boots, 97.5))],
+            "wins": int((d > 0).sum()), "losses": int((d < 0).sum()), "ties": int((d == 0).sum()), "wilcoxon_p": p}
+
+
+def verdict(stats: dict[str, Any], higher_is_better: bool = True) -> str:
+    """Conservative, rule-based reading of the primary metric. Improvement is claimed ONLY if the whole 95% CI
+    of the paired difference lies on the good side of zero."""
+    ci = stats.get("ci95")
+    if not ci:
+        return "insufficient data"
+    lo, hi = (ci[0], ci[1]) if higher_is_better else (-ci[1], -ci[0])
+    if lo > 0:
+        return "improvement demonstrated (95% CI excludes zero)"
+    if hi < 0:
+        return "degradation demonstrated (95% CI excludes zero)"
+    return "no demonstrated difference (95% CI includes zero)"
+
+
+def graph_ablation(seeds: Iterable[int], *, num_accounts: int | None = None, num_normal: int | None = None,
+                   include_structuring: bool = False) -> dict[str, Any]:
+    """Compare detection with graph analytics OFF (default) vs ON as model features, paired by seed."""
+    seeds = list(seeds)
+    kw = dict(num_accounts=num_accounts, num_normal=num_normal, include_structuring=include_structuring)
+    off = [run_seed(s, det=DetectionConfig(include_graph_features_in_model=False), **kw) for s in seeds]
+    on = [run_seed(s, det=DetectionConfig(include_graph_features_in_model=True), **kw) for s in seeds]
+    metrics = {m: {"off": _agg(r[m] for r in off), "on": _agg(r[m] for r in on),
+                   "paired": paired_stats([r[m] for r in off], [r[m] for r in on])} for m in ABLATION_METRICS}
+    lower_better = PRIMARY_METRIC in ("false_alert_accounts",)
+    return {"seeds": seeds, "n_seeds": len(seeds), "primary_metric": PRIMARY_METRIC, "metrics": metrics,
+            "verdict_primary": verdict(metrics[PRIMARY_METRIC]["paired"], higher_is_better=not lower_better),
+            "is_heldout": set(seeds).isdisjoint(DEV_SEEDS), "caveat": CAVEAT}
+
+
+def ablation_to_markdown(a: dict[str, Any]) -> str:
+    f = lambda x, d=3: "n/a" if x is None else f"{x:.{d}f}"  # noqa: E731
+    kind = "HELD-OUT seeds" if a["is_heldout"] else "includes DEVELOPMENT seeds (not valid evidence)"
+    L = [f"### Graph-feature ablation ({kind})", "", f"Seeds: {a['seeds'][0]}..{a['seeds'][-1]} (n={a['n_seeds']}). Primary metric (declared in advance): `{a['primary_metric']}`.", "",
+         "| Metric | OFF mean | ON mean | mean Δ (on−off) | 95% CI of Δ | wins/losses/ties | Wilcoxon p |", "|---|---|---|---|---|---|---|"]
+    for m, v in a["metrics"].items():
+        p = v["paired"]
+        ci = "n/a" if not p["ci95"] else f"[{p['ci95'][0]:+.3f}, {p['ci95'][1]:+.3f}]"
+        L.append(f"| {m} | {f(v['off']['mean'])} | {f(v['on']['mean'])} | {f(p['mean_diff'])} | {ci} | {p['wins']}/{p['losses']}/{p['ties']} | {f(p['wilcoxon_p'], 4)} |")
+    L += ["", f"**Verdict on primary metric:** {a['verdict_primary']}.", "", f"> {a['caveat']}"]
+    return "\n".join(L)

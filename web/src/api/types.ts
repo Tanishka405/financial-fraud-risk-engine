@@ -47,7 +47,14 @@ export interface Counterparty {
   account_id: string; sent_count: number; sent_amount_inr: number; received_count: number; received_amount_inr: number;
   severity: Severity | null; has_alert: boolean;
 }
+export interface GraphAnalyticsBlock {
+  pagerank: number; pagerank_percentile: number; betweenness: number; betweenness_percentile: number;
+  community_id: number; community_size: number; n_communities: number; modularity: number | null; betweenness_method: string; note: string;
+}
+export interface CommunityRow { community_id: number; size: number; internal_txn_share: number | null; total_value_inr: number; alerted_accounts: number; top_accounts: { account_id: string; risk_score: number }[] }
+export interface CommunitiesOut { available: boolean; reason?: string; total: number; modularity?: number | null; items: CommunityRow[]; interpretation?: string; note?: string; betweenness_method?: string }
 export interface AccountDetail {
+  graph_analytics: GraphAnalyticsBlock | null;
   account_id: string;
   observed: { txn_count_sent: number; txn_count_received: number; total_amount_sent_inr: number; total_amount_received_inr: number; first_seen: string; last_seen: string };
   computed_features: {
@@ -82,7 +89,7 @@ export interface Summary {
 
 export interface GraphNode {
   id: string; is_center: boolean; risk_score: number | null; severity: Severity | null; has_alert: boolean; reason_codes: string[];
-  degree_total: number; counterparties: number; visible_in: number; visible_out: number; visible_in_inr: number; visible_out_inr: number;
+  community_id: number | null; degree_total: number; counterparties: number; visible_in: number; visible_out: number; visible_in_inr: number; visible_out_inr: number;
 }
 export interface GraphEdge {
   id: string; source: string; target: string; aggregated: boolean; txn_count: number; total_amount_inr: number;
@@ -91,8 +98,9 @@ export interface GraphEdge {
 }
 export interface GraphData {
   mode: "aggregated" | "transactions"; center: string | null; depth: number | null; nodes: GraphNode[]; edges: GraphEdge[];
-  meta: { node_count: number; edge_count: number; transactions_represented: number; truncated: boolean; scope_nodes: number; limit_nodes: number; max_transaction_edges: number; note: string };
+  meta: { node_count: number; edge_count: number; transactions_represented: number; truncated: boolean; scope_nodes: number; limit_nodes: number; max_transaction_edges: number; note: string; n_communities: number | null; modularity: number | null; communities_note: string };
 }
+export type ColorBy = "risk" | "community";
 export interface GraphParams {
   center?: string; depth?: number; min_amount?: string; from?: string; to?: string; mode?: "aggregated" | "transactions"; limit_nodes?: number; only_flagged?: boolean;
 }

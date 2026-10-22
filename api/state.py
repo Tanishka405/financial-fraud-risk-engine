@@ -78,6 +78,7 @@ class Session:
         self.last_ingest: IngestInfo | None = None
         self.alerts_by_id: dict[str, Any] = {}
         self.flagged: dict[str, list[str]] = {}
+        self.ga_nodes: pd.DataFrame | None = None  # indexed by account_id; None if analytics unavailable
 
     def reset(self, cases: CaseStore | None = None) -> None:
         """Drop all loaded state (used by tests)."""
@@ -185,6 +186,8 @@ class Session:
         with self.lock:
             self.result, self.view, self.meta, self.evaluation = result, view, meta, evaluation
             self.alerts_by_id = {a.alert_id: a for a in result.alerts}
+            ga = result.graph_analytics
+            self.ga_nodes = ga.nodes.set_index("account_id") if (ga is not None and len(ga.nodes)) else None
             self.flagged = flagged
             if synthetic:
                 self.last_ingest = IngestInfo(name, source, len(tx), len(outcome.rejects), outcome.rejects, [], now_ist())

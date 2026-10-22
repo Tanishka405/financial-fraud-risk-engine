@@ -13,7 +13,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.detection.benchmark import evaluate_seeds, parse_seeds, to_markdown  # noqa: E402
+from core.detection.benchmark import (HELDOUT_SEEDS, ablation_to_markdown, evaluate_seeds, graph_ablation,  # noqa: E402
+                                      parse_seeds, to_markdown)
 
 
 def main() -> None:
@@ -22,11 +23,19 @@ def main() -> None:
     ap.add_argument("--accounts", type=int, default=None)
     ap.add_argument("--normal", type=int, default=None, help="normal baseline transactions")
     ap.add_argument("--include-structuring", action="store_true", help="add the opt-in STRUCTURING scenario")
+    ap.add_argument("--graph-ablation", action="store_true", help="paired OFF/ON comparison of graph-analytics model features")
+    ap.add_argument("--heldout", action="store_true", help="use the pre-declared held-out seeds (101-150) instead of --seeds")
     ap.add_argument("--format", choices=["md", "json"], default="md")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
-    s = evaluate_seeds(parse_seeds(a.seeds), num_accounts=a.accounts, num_normal=a.normal, include_structuring=a.include_structuring)
-    text = to_markdown(s) if a.format == "md" else json.dumps(s, indent=2)
+    seeds = HELDOUT_SEEDS if a.heldout else parse_seeds(a.seeds)
+    kw = dict(num_accounts=a.accounts, num_normal=a.normal, include_structuring=a.include_structuring)
+    if a.graph_ablation:
+        s = graph_ablation(seeds, **kw)
+        text = ablation_to_markdown(s) if a.format == "md" else json.dumps(s, indent=2)
+    else:
+        s = evaluate_seeds(seeds, **kw)
+        text = to_markdown(s) if a.format == "md" else json.dumps(s, indent=2)
     if a.out:
         os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
         open(a.out, "w").write(text)

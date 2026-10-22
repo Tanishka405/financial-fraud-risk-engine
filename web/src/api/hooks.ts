@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { api } from "./client";
 import { POLL_MS } from "./config";
 import type {
-  AccountDetail, AccountRow, AlertDetail, AlertFilters, AlertList, AnalysisStatus, CaseStatus, DatasetInfo, DetectionConfigOut,
+  AccountDetail, AccountRow, AlertDetail, CommunitiesOut, AlertFilters, AlertList, AnalysisStatus, CaseStatus, DatasetInfo, DetectionConfigOut,
   Evaluation, GraphData, GraphParams, Ingest, Paged, RejectRow, Resolution, RunRequest, SearchResult, Summary, TransactionDetail,
   TxFilters, Transaction, UploadResponse,
 } from "./types";
@@ -34,6 +34,9 @@ export const useAccount = (id?: string) =>
 
 export const useGraph = (p: GraphParams, enabled = true) =>
   useQuery({ queryKey: ["graph", p], queryFn: () => api.get<GraphData>("/api/graph", p as unknown as P), placeholderData: keepPreviousData, enabled, retry: false });
+
+export const useCommunities = (enabled = true) =>
+  useQuery({ queryKey: ["communities"], queryFn: () => api.get<CommunitiesOut>("/api/graph/communities", { limit: 6 }), enabled, retry: false });
 
 export const useAlerts = (f: AlertFilters) =>
   useQuery({ queryKey: ["alerts", f], queryFn: () => api.get<AlertList>("/api/alerts", f as unknown as P), placeholderData: keepPreviousData, retry: false });

@@ -43,14 +43,21 @@ MODEL_FEATURE_COLUMNS: tuple[str, ...] = (
 )
 
 
+GRAPH_FEATURE_COLUMNS: tuple[str, ...] = ("log_pagerank_rel", "log1p_betweenness_rel", "log_community_size")
+
+
 def assert_no_label_columns(columns) -> None:
     bad = [c for c in columns if any(s in str(c).lower() for s in FORBIDDEN_FEATURE_SUBSTRINGS)]
     if bad:
         raise ValueError(f"Label-like column(s) must never be model features: {bad}")
 
 
-def build_model_feature_matrix(account_features: pd.DataFrame, graph_metrics: pd.DataFrame) -> pd.DataFrame:
-    """Return DataFrame indexed by account_id with MODEL_FEATURE_COLUMNS, all finite."""
+def build_model_feature_matrix(account_features: pd.DataFrame, graph_metrics: pd.DataFrame,
+                               graph_analytics: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Return DataFrame indexed by account_id with MODEL_FEATURE_COLUMNS, all finite.
+
+    If `graph_analytics` (the core.graph.analytics nodes frame) is given, GRAPH_FEATURE_COLUMNS are appended.
+    PageRank and betweenness are rescaled by node count (0 = average) and log-transformed."""
     assert_no_label_columns(account_features.columns)
     assert_no_label_columns(graph_metrics.columns)
     if account_features.empty:
@@ -75,7 +82,15 @@ def build_model_feature_matrix(account_features: pd.DataFrame, graph_metrics: pd
     cp = df["unique_counterparties_sent"].astype(float).replace(0, np.nan)
     out["repeat_intensity"] = (df["txn_count_sent"].astype(float) / cp).fillna(0.0)
 
-    out = out[list(MODEL_FEATURE_COLUMNS)].astype(float)
+    cols = list(MODEL_FEATURE_COLUMNS)
+    if graph_analytics is not None and len(graph_analytics):
+        ga = graph_analytics.set_index("account_id").reindex(out.index)
+        n = float(len(out))
+        out["log_pagerank_rel"] = np.log(np.clip(ga["pagerank"].fillna(0.0).to_numpy() * n, 1e-12, None))
+        out["log1p_betweenness_rel"] = np.log1p(np.clip(ga["betweenness"].fillna(0.0).to_numpy(), 0.0, None) * n)
+        out["log_community_size"] = np.log(np.clip(ga["community_size"].fillna(1.0).to_numpy(), 1.0, None))
+        cols += list(GRAPH_FEATURE_COLUMNS)
+    out = out[cols].astype(float)
     if not np.isfinite(out.to_numpy()).all():  # defensive: must never reach sklearn otherwise
         raise ValueError("Model feature matrix contains non-finite values")
     assert_no_label_columns(out.columns)
