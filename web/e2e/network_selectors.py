@@ -2,11 +2,12 @@
 """Browser E2E for the Network page selectors (Colour by / Edges / Depth).
 
 Optional dev check (Playwright is NOT a declared project dependency): pip install playwright && playwright install chromium.
-Requires: API on :8000 with a dataset loaded, and the Vite dev server on :5173.
+Requires: API on :8000 and the Vite dev server on :5173 (it loads the default synthetic dataset itself).
 Verifies against the API, per node, that selecting an option actually changes the DISPLAYED data.
 """
 import json, sys, time, urllib.request
 from playwright.sync_api import sync_playwright
+from _common import ensure_synthetic
 
 UI, API = "http://127.0.0.1:5173", "http://127.0.0.1:8000"
 SEV = {"critical": "#ef4444", "high": "#f87171", "medium": "#fbbf24", "low": "#22d3ee"}
@@ -52,6 +53,7 @@ def expect_comm(g):
 
 
 def run():
+    ensure_synthetic()  # self-contained: do not depend on whatever dataset a previous script left loaded
     with sync_playwright() as p:
         b = p.chromium.launch(); pg = b.new_page(viewport={"width": 1440, "height": 900})
         pg.on("console", lambda m: errs.append((m.type, m.text[:200])) if m.type == "error" else None)

@@ -1,5 +1,11 @@
 # Design Decisions — Phase 0/1
 
+> **Historical document.** This records the Phase 0/1 decisions and reasoning, which still hold. Two statements below have since
+> changed: `core/` now also imports `scikit-learn` and `scipy` (for `core/detection`), though it still has **no web-framework or
+> database dependency**; and the graph analytics deferred to "Phase 4" were later implemented as *descriptive* metrics in
+> `core/graph/analytics.py`. For the current state see [`../README.md`](../README.md), [`architecture.md`](architecture.md),
+> [`detection.md`](detection.md) and [`integration_review.md`](integration_review.md).
+
 This document records the decisions made in Phase 0/1 and the reasoning behind
 them, so they can be defended in a viva/interview and revisited deliberately
 (not accidentally) in later phases.

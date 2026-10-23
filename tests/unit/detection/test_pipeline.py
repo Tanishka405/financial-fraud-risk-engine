@@ -68,9 +68,22 @@ def test_alert_explanations_match_triggered_signals(config):
 
 def test_model_only_alert_flagged_as_such(config):
     _, tx = _synthetic(config)
-    r = run_analysis(tx, config, DetectionConfig(model_only_alert_percentile=90.0))
+    det = DetectionConfig(model_only_alert_percentile=90.0)
+    r = run_analysis(tx, config, det)
     mo = [a for a in r.alerts if a.basis == "MODEL_ONLY"]
-    assert mo and all(a.reason_codes == ["MODEL_ANOMALY"] and not a.hits and a.severity == "low" for a in mo)
+    assert mo and all(a.reason_codes == ["MODEL_ANOMALY"] and not a.hits for a in mo)
+    cap = (1 - det.rule_share) * 100  # rule_score is 0, so the index cannot exceed this (30 with the defaults)
+    for a in mo:
+        assert a.rule_score == 0 and a.risk_score <= cap + 1e-6
+        # low severity, except a model percentile of exactly 100 lands on the medium boundary (>= 30)
+        assert a.severity == "low" or (a.model_score == 100 and a.severity == "medium")
+
+
+def test_model_only_severity_edge_case_is_exactly_the_medium_boundary():
+    from core.detection.pipeline import severity_for
+    det = DetectionConfig()
+    assert severity_for((1 - det.rule_share) * 100, det) == "medium"  # percentile exactly 100, no rule hit
+    assert severity_for((1 - det.rule_share) * 99, det) == "low"  # the 99th percentile alert threshold
 
 
 def test_synthetic_labels_used_only_for_evaluation(config):
