@@ -69,7 +69,9 @@ Base for this work: `financial-fraud-risk-engine` (upstream `main` at `5efab17`)
 | `4ae11f6` | Increment 1 — multi-seed evaluation harness with designed-rule recall |
 | `cd5c240` | Increment 2 — `STRUCTURING` rule, opt-in scenario (default output byte-identical), API flag, UI toggle |
 | `64eba8a` | Increment 3 — graph analytics, flag-gated model features (default **off**), held-out paired ablation, API + UI, accessibility fix for segmented controls |
-| (this release) | Increment 4 — documentation, docs-consistency tests, E2E scripts, model-only severity correction |
+| `2e251bb` | Increment 4 — documentation matched to verified behaviour, docs-consistency tests, E2E scripts, model-only severity correction |
+| `dd33c53` | Increment 4 — stale dependency documentation corrected (verified with an AST import scan), `pydantic`/`starlette` declared, enforcing test |
+| (this commit) | Records the final verification results in this document; documentation only |
 
 ## Evidence on graph features (no improvement is claimed)
 
@@ -87,8 +89,9 @@ documentation, tests and E2E scripts of this increment.
 
 | Check | Command | Status | Result |
 |---|---|---|---|
-| Backend and core tests | `pytest -q` | **PASS** | 177 passed (exit 0) |
+| Backend and core tests | `pytest -q` | **PASS** | 181 passed (exit 0) |
 | Docs-consistency tests (mutation-tested: 3 deliberate drifts each failed) | `pytest -q tests/unit/test_docs_consistency.py` | **PASS** | 10 passed |
+| Dependency claims, AST-based incl. function-level imports (mutation-tested: 4 deliberate regressions each failed) | `pytest -q tests/unit/test_dependencies.py` | **PASS** | 4 passed |
 | Frontend typecheck | `cd web && npm run typecheck` | **PASS** | exit 0 |
 | Frontend tests | `cd web && npm test` | **PASS** | 45 passed, 7 files |
 | Frontend production build | `cd web && npm run build` | **PASS** | built, exit 0 |
@@ -100,7 +103,11 @@ documentation, tests and E2E scripts of this increment.
 | Prototype claims reproduced | `docs/evidence/verify_prototype_claims.py` | **PASS** | all findings above reproduced |
 | Prototype test suite (at `94cfdc4`) | `pytest tests/` in the prototype | **PASS** (earlier in this engagement) | 163 passed; not re-run for this release |
 | Prototype headline metrics | `scripts/evaluate_detection.py`-equivalent in prototype | **PARTIAL** | approximate reproduction only (see table) |
-| Clean-start smoke test from documented commands | README quick start on a fresh clone | recorded in the release report | — |
+| Clean-start smoke: fresh `git clone` (no venv, `node_modules` or `var/`) | `python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"` | **PASS** | exit 0 (resolved newer dependency versions than development: FastAPI 0.162, pandas 3.1) |
+| Clean-start smoke: frontend install | `cd web && npm install` | **PASS** | exit 0, 0 vulnerabilities |
+| Clean-start smoke: servers from the README commands | `uvicorn api.main:app --port 8000`, `npm run dev` | **PASS** | both healthy; “Application startup complete”; default case DB auto-created |
+| Clean-start smoke: first-run browser flow | generate dataset → overview, alerts, alert detail, network, transactions, account, data page | **PASS** | 11 / 11 (3,098 tx, 200 accounts, 16 alerts, 9 rules listed) |
+| Clean-start smoke: README test commands in the clone | `pytest -q`, `python scripts/run_pipeline.py`, `npm run typecheck`, `npm test`, `npm run build` | **PASS** | 181 passed; pipeline 3,098 tx / 200 accounts; typecheck exit 0; 45 tests passed; build exit 0 |
 | Prototype Streamlit frontend | — | **NOT RUN** | needs a server/session |
 | Docker builds (either project) | — | **NOT RUN** | Docker unavailable |
 | Prototype SQL benchmark at 500 k rows (`--full`) | — | **NOT RUN** | default mode only was run |
@@ -109,6 +116,11 @@ documentation, tests and E2E scripts of this increment.
 | Phone-width layout on the current UI | — | **NOT RUN** this release | checked earlier in the project, before these changes |
 | Evaluation on real labelled data | — | **BLOCKED** | no such data exists |
 | PostgreSQL layer of the third repository | — | **BLOCKED** | no PostgreSQL available; not adopted |
+
+Notes on the final pass: all E2E scripts ran on freshly started servers with a case database that did not exist beforehand. The first smoke attempt
+reported one failure that was a **wrong test assertion** (the browser's `innerText` returns CSS-uppercased text, so “Weight” was not found); the
+application correctly rendered all 9 rules, and the assertion was replaced by an exact rule-row check. A one-line unused `from fastapi import Query`
+inside `api/routers/system.py::rejects` and the `pyproject.toml` version (`0.1.0`, versus API version `0.2.0`) were noticed and deliberately left unchanged.
 
 ## Known limitations
 
