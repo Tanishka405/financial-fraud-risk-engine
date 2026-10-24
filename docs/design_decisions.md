@@ -12,14 +12,19 @@ them, so they can be defended in a viva/interview and revisited deliberately
 
 ## 1. Core library has zero web/DB dependencies
 
-`core/` imports only `pandas`, `numpy`, `networkx`, `pytz`, `python-dateutil`,
-`PyYAML`. No FastAPI, no SQLAlchemy, no psycopg. This means:
+`core/` imports only the standard library plus `pandas`, `numpy`, `networkx`, `scipy`,
+`scikit-learn`, `pytz`, `python-dateutil` and `PyYAML` (verified by an AST scan of every
+import, including function-level ones, enforced by `tests/unit/test_dependencies.py`).
+`scipy` and `scikit-learn` were added with `core/detection` after Phase 1. No FastAPI,
+no SQLAlchemy, no psycopg, no `sqlite3`. This means:
 
 - The entire analytical pipeline is testable and demonstrable with `pytest`
   and a plain script — no server, no database, no frontend required.
-- Later phases (API, DB) become **adapters around** this library, not a
-  rewrite of it. `db/` will convert `core.data.schema.Transaction` objects to
-  rows; `api/` will call `core` functions and serialise the results.
+- Later phases (API, persistence) become **adapters around** this library, not a
+  rewrite of it. `api/` calls `core` functions and serialises the results; the
+  only persisted state (investigation events) lives in `api/cases.py` (SQLite).
+  The separate `db/` module originally sketched here was **not built** — see
+  `docs/architecture.md` for why PostgreSQL was deliberately not added.
 
 ## 2. Timestamp convention: IST (Asia/Kolkata)
 
